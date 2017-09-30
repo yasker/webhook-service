@@ -1,7 +1,9 @@
 package drivers
 
 import (
+	"encoding/json"
 	"fmt"
+	"io/ioutil"
 	"net/http"
 	"regexp"
 	"strings"
@@ -50,11 +52,27 @@ func (s *ServiceUpgradeDriver) ValidatePayload(conf interface{}, apiClient *clie
 	return http.StatusOK, nil
 }
 
-func (s *ServiceUpgradeDriver) Execute(conf interface{}, apiClient *client.RancherClient, requestPayload interface{}) (int, error) {
-	requestBody := make(map[string]interface{})
+func (s *ServiceUpgradeDriver) Execute(conf interface{}, apiClient *client.RancherClient, request interface{}) (int, error) {
+	r, ok := request.(*http.Request)
+	if !ok {
+		return http.StatusBadRequest, fmt.Errorf("request should be of type *http.Request")
+	}
+	var requestPayload interface{}
+	if r.Body != nil {
+		bytes, err := ioutil.ReadAll(r.Body)
+		if err != nil {
+			return http.StatusInternalServerError, fmt.Errorf("Error reading request body in Execute handler: %v", err)
+		}
+
+		if len(bytes) > 0 {
+			if err := json.Unmarshal(bytes, &requestPayload); err != nil {
+				return http.StatusInternalServerError, fmt.Errorf("Error unmarshalling request body in Execute handler: %v", err)
+			}
+		}
+	}
+
 	config := &model.ServiceUpgrade{}
-	err := mapstructure.Decode(conf, config)
-	if err != nil {
+	if err := mapstructure.Decode(conf, config); err != nil {
 		return http.StatusInternalServerError, errors.Wrap(err, "Couldn't unmarshal config")
 	}
 
